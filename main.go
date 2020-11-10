@@ -8,6 +8,7 @@ import (
     "strconv"
     "os"
     "os/signal"
+    "math/rand"
     "github.com/bwmarrin/discordgo"
 )
 
@@ -99,7 +100,10 @@ func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate)
                 return
             case "quote":
                 if len(splitContent) < 2 {
-                    session.ChannelMessageSend(message.ChannelID, "No arguments provided. Usage: `quote <quote number>`")
+                    // get a random quote
+                    quotes := getQuotes()
+                    randomQuote := quotes[rand.Intn(len(quotes))]
+                    session.ChannelMessageSend(message.ChannelID, randomQuote)
                     return
                 }
                 args := splitContent[1]
