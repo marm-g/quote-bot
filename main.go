@@ -1,148 +1,190 @@
 package main
 
 import (
-    "fmt"
-    "io/ioutil"
-    "strings"
-    "syscall"
-    "strconv"
-    "os"
-    "os/signal"
-    "math/rand"
-    "github.com/bwmarrin/discordgo"
+	"database/sql"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/bwmarrin/discordgo"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const prefix string = "!"
-const quoteFile string = "./quotes.txt"
+
 var nextQuoteID = 0
 
 func check(e error) {
-    if e != nil {
-        panic(e)
-    }
+	if e != nil {
+		panic(e)
+	}
 }
 
-func contains (source []string, target string) bool {
-    for _, str := range source {
-        if str == target {
-            return true
-        }
-    }
-    return false
+func contains(source []string, target string) bool {
+	for _, str := range source {
+		if str == target {
+			return true
+		}
+	}
+	return false
 }
 
 func getInitialNextQuoteID() int {
-    quotes := getQuotes()
-    return len(quotes)
+	quotes := getQuotes()
+	return len(quotes)
 }
 
-func getQuotes() []string {
-    quotes, err := ioutil.ReadFile(quoteFile)
-    check(err)
-    splitQuotes := strings.Split(string(quotes), "\n");
-    // the last index is just blank (after the final newline) so we cut it off
-    return splitQuotes[:len(splitQuotes)-1]
+type quoteRow struct {
+	ID        int
+	Username  string
+	QuoteText string
+	DateAdded int
 }
 
-func getSpecificQuote(id int) string {
-    id = id - 1
-    quotes := getQuotes()
-    if id >= len(quotes) || id < 0 {
-        return "Quote doesn't exist."
-    }
-    return quotes[id]
+func getQuotes() []quoteRow {
+	db, err := sql.Open("sqlite3", "quotes.db")
+	check(err)
+	query := "SELECT * FROM quote;"
+	rows, dbErr := db.Query(query)
+	check(dbErr)
+	returnObject := make([]quoteRow, 0)
+	for rows.Next() {
+		var (
+			id        int
+			username  string
+			quoteText string
+			dateAdded int
+		)
+		if err := rows.Scan(&id, &username, &quoteText, &dateAdded); err != nil {
+			log.Fatal(err)
+		}
+		returnObject = append(returnObject, quoteRow{id, username, quoteText, dateAdded})
+	}
+	return returnObject
 }
 
+func getSpecificQuote(id int) quoteRow {
+	id = id - 1
+	quotes := getQuotes()
+	if id >= len(quotes) || id < 0 {
+		return quoteRow{}
+	}
+	return quotes[id]
+}
 
-func addQuote(quote string) bool {
-    quotes, err := os.OpenFile(quoteFile, os.O_WRONLY | os.O_APPEND, 0644)
-    if (err != nil) {
-        return false
-    }
-    _, writeErr := quotes.WriteString(quote + "\n")
-    if (writeErr != nil) {
-        return false
-    }
-    nextQuoteID = nextQuoteID + 1
-    return true
+func addQuote(username string, quote string) bool {
+	date := strconv.FormatInt(time.Now().Unix(), 10)
+	query := "INSERT INTO quote (username, quoteText, dateAdded) VALUES ('" + username + "','" + quote + "','" + date + "')"
+	db, err := sql.Open("sqlite3", "quotes.db")
+	if err != nil {
+		log.Println("Couldn't connect to db")
+		log.Fatal(err)
+		return false
+	}
+	_, execErr := db.Exec(query)
+	if execErr != nil {
+		log.Println("Error exectuting query")
+		log.Println(query)
+		log.Fatal(execErr)
+		return false
+	}
+	return true
 }
 
 func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate) {
-    if message.Author.ID == session.State.User.ID {
-        return
-    }
+	if message.Author.ID == session.State.User.ID {
+		return
+	}
 
-    content := message.Content
+	content := message.Content
 
-    if strings.HasPrefix(content, prefix) {
-        commands := []string{"addquote", "quote"}
-        contentWithoutPrefix := strings.Replace(content, prefix, "", 1)
-        splitContent := strings.Split(contentWithoutPrefix, " ")
-        command := splitContent[0]
-        if contains(commands, command) {
-            splitContent = strings.SplitAfter(contentWithoutPrefix, command + " ")
-            // actually do the command
-            switch command {
-            case "addquote":
-                if len(splitContent) < 2 {
-                    session.ChannelMessageSend(message.ChannelID, "No arguments provided. Usage: `addquote <quote>`")
-                    return
-                }
-                args := splitContent[1]
-                // TODO: strip newlines from quotes
-                result := addQuote(strings.ReplaceAll(args, "\n", " "))
-                if result == true {
-                    session.ChannelMessageSend(message.ChannelID, "New quote added!")
-                    return
-                } else {
-                    session.ChannelMessageSend(message.ChannelID, "Failed to add quote. Try again, or yell at Reno.")
-                }
-                return
-            case "quote":
-                if len(splitContent) < 2 {
-                    // get a random quote
-                    quotes := getQuotes()
-                    randomQuote := quotes[rand.Intn(len(quotes))]
-                    session.ChannelMessageSend(message.ChannelID, randomQuote)
-                    return
-                }
-                args := splitContent[1]
-                quoteID, err := strconv.Atoi(args)
-                if (err != nil) {
-                    quoteID = 0 
-                }
-                quote := getSpecificQuote(quoteID)
-                session.ChannelMessageSend(message.ChannelID, quote)
-                return
-            }
-            session.ChannelMessageSend(message.ChannelID, message.Content)
-        }
-    }
+	if strings.HasPrefix(content, prefix) {
+		commands := []string{"addquote", "quote", "addedby"}
+		contentWithoutPrefix := strings.Replace(content, prefix, "", 1)
+		splitContent := strings.Split(contentWithoutPrefix, " ")
+		command := splitContent[0]
+		if contains(commands, command) {
+			splitContent = strings.SplitAfter(contentWithoutPrefix, command+" ")
+			// actually do the command
+			switch command {
+			case "addquote":
+				if len(splitContent) < 2 {
+					session.ChannelMessageSend(message.ChannelID, "No arguments provided. Usage: `addquote <quote>`")
+					return
+				}
+				args := splitContent[1]
+
+				name := message.Author.Username
+				result := addQuote(name, strings.ReplaceAll(args, "\n", " "))
+				if result {
+					session.ChannelMessageSend(message.ChannelID, "New quote added!")
+					return
+				} else {
+					session.ChannelMessageSend(message.ChannelID, "Failed to add quote. Try again, or yell at Reno.")
+				}
+				return
+			case "quote":
+				msg := ""
+				var quote quoteRow
+				if len(splitContent) < 2 {
+					// get a random quote
+					quotes := getQuotes()
+					quote = quotes[rand.Intn(len(quotes))]
+					msg = "> " + quote.QuoteText
+					msg += "\n Quote ID " + strconv.Itoa(quote.ID)
+					// TODO: add a verbose flag that displays this
+					// if quote.DateAdded > 0 {
+					//	msg += " added on " + strconv.Itoa(quote.DateAdded)
+					//}
+
+				} else {
+					args := splitContent[1]
+					quoteID, err := strconv.Atoi(args)
+					if err != nil {
+						quoteID = 0
+					}
+					quote = getSpecificQuote(quoteID)
+					msg = "> " + quote.QuoteText
+				}
+
+				session.ChannelMessageSend(message.ChannelID, msg)
+				return
+			}
+			session.ChannelMessageSend(message.ChannelID, message.Content)
+		}
+	}
 }
 
-func main () {
-    // for _safety_  
-    data, err := ioutil.ReadFile("./.token")
-    check(err)
-    token := string(data)
-    token = strings.Trim(token, "\n")
+func main() {
+	// for _safety_
+	data, err := ioutil.ReadFile("./.token")
+	check(err)
+	token := string(data)
+	token = strings.Trim(token, "\n")
 
-    discord, err := discordgo.New("Bot " + token)
-    check(err)
+	discord, err := discordgo.New("Bot " + token)
+	check(err)
 
-    discord.AddHandler(messageCreate)
+	discord.AddHandler(messageCreate)
 
-    err = discord.Open()
-    check(err)
+	err = discord.Open()
+	check(err)
 
-    nextQuoteID = getInitialNextQuoteID()
+	nextQuoteID = getInitialNextQuoteID()
 
-    fmt.Println("Bot running. CTRL-C to stop.")
-    // create a channel that looks for system signals (that has a size of one event)
-    osChannel := make(chan os.Signal, 1)
-    signal.Notify(osChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
-    // TODO: what the heck does this do
-    <-osChannel
+	fmt.Println("Bot running. CTRL-C to stop.")
+	// create a channel that looks for system signals (that has a size of one event)
+	osChannel := make(chan os.Signal, 1)
+	signal.Notify(osChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	// TODO: what the heck does this do
+	<-osChannel
 
-    discord.Close()
+	discord.Close()
 }
