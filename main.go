@@ -43,7 +43,6 @@ func getInitialNextQuoteID() int {
 
 type quoteRow struct {
 	ID        int
-	Username  string
 	QuoteText string
 	DateAdded int
 }
@@ -51,21 +50,20 @@ type quoteRow struct {
 func getQuotes() []quoteRow {
 	db, err := sql.Open("sqlite3", "quotes.db")
 	check(err)
-	query := "SELECT * FROM quote;"
+	query := "SELECT id,quoteText,dateAdded FROM quote;"
 	rows, dbErr := db.Query(query)
 	check(dbErr)
 	returnObject := make([]quoteRow, 0)
 	for rows.Next() {
 		var (
 			id        int
-			username  string
 			quoteText string
 			dateAdded int
 		)
-		if err := rows.Scan(&id, &username, &quoteText, &dateAdded); err != nil {
+		if err := rows.Scan(&id, &quoteText, &dateAdded); err != nil {
 			log.Fatal(err)
 		}
-		returnObject = append(returnObject, quoteRow{id, username, quoteText, dateAdded})
+		returnObject = append(returnObject, quoteRow{id, quoteText, dateAdded})
 	}
 	return returnObject
 }
