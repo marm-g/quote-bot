@@ -77,23 +77,29 @@ func getSpecificQuote(id int) quoteRow {
 	return quotes[id]
 }
 
-func addQuote(username string, quote string) bool {
+func addQuote(username string, quote string) int64 {
 	date := strconv.FormatInt(time.Now().Unix(), 10)
 	query := "INSERT INTO quote (username, quoteText, dateAdded) VALUES ('" + username + "','" + quote + "','" + date + "')"
 	db, err := sql.Open("sqlite3", "quotes.db")
 	if err != nil {
 		log.Println("Couldn't connect to db")
 		log.Fatal(err)
-		return false
+		return 0
 	}
-	_, execErr := db.Exec(query)
+	result, execErr := db.Exec(query)
 	if execErr != nil {
 		log.Println("Error exectuting query")
 		log.Println(query)
 		log.Fatal(execErr)
-		return false
+		return 0
 	}
-	return true
+	newQuoteId, resErr := result.LastInsertId()
+	if resErr != nil {
+		log.Println("Error getting last insert id")
+		log.Fatal(resErr)
+		return 0
+	}
+	return newQuoteId
 }
 
 func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate) {
@@ -121,8 +127,8 @@ func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate)
 
 				name := message.Author.Username
 				result := addQuote(name, strings.ReplaceAll(args, "\n", " "))
-				if result {
-					session.ChannelMessageSend(message.ChannelID, "New quote added!")
+				if result > 0 {
+					session.ChannelMessageSend(message.ChannelID, "New quote added! Quote ID: " + strconv.FormatInt(result, 10))
 					return
 				} else {
 					session.ChannelMessageSend(message.ChannelID, "Failed to add quote. Try again, or yell at Reno.")
