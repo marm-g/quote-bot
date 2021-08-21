@@ -79,14 +79,14 @@ func getSpecificQuote(id int) quoteRow {
 
 func addQuote(username string, quote string) int64 {
 	date := strconv.FormatInt(time.Now().Unix(), 10)
-	query := "INSERT INTO quote (username, quoteText, dateAdded) VALUES ('" + username + "','" + quote + "','" + date + "')"
+	query := "INSERT INTO quote (username, quoteText, dateAdded) VALUES (?,?,?)"
 	db, err := sql.Open("sqlite3", "quotes.db")
 	if err != nil {
 		log.Println("Couldn't connect to db")
 		log.Fatal(err)
 		return 0
 	}
-	result, execErr := db.Exec(query)
+	result, execErr := db.Exec(query, username, quote, date)
 	if execErr != nil {
 		log.Println("Error exectuting query")
 		log.Println(query)
