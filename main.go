@@ -68,13 +68,20 @@ func getQuotes() []quoteRow {
 	return returnObject
 }
 
-func getSpecificQuote(id int) quoteRow {
-	id = id - 1
-	quotes := getQuotes()
-	if id >= len(quotes) || id < 0 {
+func getSpecificQuote(targetId int) quoteRow {
+	db, err := sql.Open("sqlite3", "quotes.db")
+	check(err)
+	row := db.QueryRow("SELECT id,quoteText,dateAdded FROM quote WHERE id=?", targetId)
+	var (
+		id        int
+		quoteText string
+		dateAdded int
+	)
+	if err := row.Scan(&id, &quoteText, &dateAdded); err != nil {
+		// Indicates no row was found; return a blank row
 		return quoteRow{}
 	}
-	return quotes[id]
+	return quoteRow{id, quoteText, dateAdded}
 }
 
 func addQuote(username string, quote string) int64 {
@@ -155,7 +162,11 @@ func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate)
 						quoteID = 0
 					}
 					quote = getSpecificQuote(quoteID)
-					msg = "> " + quote.QuoteText
+					if quote.ID <= 0 {
+						msg = "Quote not found!"
+					} else {
+						msg = "> " + quote.QuoteText
+					}
 				}
 
 				session.ChannelMessageSend(message.ChannelID, msg)
