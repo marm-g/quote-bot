@@ -2,5 +2,6 @@
 quote-bot
 quote-bot.exe
 quotes.txt
-quotes.db
+*.db
 tags
+.vscode

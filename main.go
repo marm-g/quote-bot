@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -19,8 +18,6 @@ import (
 
 const prefix string = "!"
 
-var nextQuoteID = 0
-
 func check(e error) {
 	if e != nil {
 		panic(e)
@@ -34,11 +31,6 @@ func contains(source []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func getInitialNextQuoteID() int {
-	quotes := getQuotes()
-	return len(quotes)
 }
 
 type quoteRow struct {
@@ -135,7 +127,7 @@ func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate)
 				name := message.Author.Username
 				result := addQuote(name, strings.ReplaceAll(args, "\n", " "))
 				if result > 0 {
-					session.ChannelMessageSend(message.ChannelID, "New quote added! Quote ID: " + strconv.FormatInt(result, 10))
+					session.ChannelMessageSend(message.ChannelID, "New quote added! Quote ID: "+strconv.FormatInt(result, 10))
 					return
 				} else {
 					session.ChannelMessageSend(message.ChannelID, "Failed to add quote. Try again, or yell at Reno.")
@@ -178,8 +170,8 @@ func messageCreate(session *discordgo.Session, message *discordgo.MessageCreate)
 }
 
 func main() {
-	// for _safety_
-	data, err := ioutil.ReadFile("./.token")
+	// Get the bot's OAuth token
+	data, err := os.ReadFile("./.token")
 	check(err)
 	token := string(data)
 	token = strings.Trim(token, "\n")
@@ -192,12 +184,10 @@ func main() {
 	err = discord.Open()
 	check(err)
 
-	nextQuoteID = getInitialNextQuoteID()
-
 	fmt.Println("Bot running. CTRL-C to stop.")
 	// create a channel that looks for system signals (that has a size of one event)
 	osChannel := make(chan os.Signal, 1)
-	signal.Notify(osChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	signal.Notify(osChannel, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	// TODO: what the heck does this do
 	<-osChannel
 
